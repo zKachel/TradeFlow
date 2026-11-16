@@ -30,7 +30,7 @@ Legende: `[x]` fertig und getestet · `[~]` nur als Demo/Mock · `[ ]` offen
 - [x] Barrierearmut: Labels, Fokus-Ring, Tastaturbedienung, `aria-*`, reduzierte Bewegung
 - [x] Abnahme: auf 390 px (Handy) und 1440 px (Desktop) per Screenshot geprüft; Klicktest Anfrage → Dashboard → Neuladen, Auftrag anlegen → Liste
 
-## Sprint 2 – Echte Kernfunktionalität ✅ (Code fertig, Test mit echtem Supabase offen)
+## Sprint 2 – Echte Kernfunktionalität ✅ vorläufig abgenommen (16.11.2026) – finale Abnahme nach Supabase-Integrationstest
 
 Freigabe: 16.11.2026. Schwerpunkt: Datenbank, Login, Firmenverwaltung.
 
@@ -84,7 +84,9 @@ Freigabe: 16.11.2026. Schwerpunkt: Datenbank, Login, Firmenverwaltung.
       Bilddateien (beschädigt, SVG, PNG), Doppelklick, Entwurf nach Neuladen
 - [x] Demo bleibt unter `/demo` vollständig erhalten
 
-## Sprint 3 – Betriebe und Mitarbeiter
+## Sprint 3 – Betriebe und Mitarbeiter (inhaltlich freigegeben, Start erst nach Supabase-Integrationstest)
+
+- [ ] Voraussetzung: Integrationstest mit echtem Supabase bestanden (Auth, Speichern, private Fotos, Mandantentrennung)
 
 - [ ] Firmenprofile und Mitgliedschaften
 - [ ] Einladungen (sichere, einmalige, zeitlich begrenzte Tokens)

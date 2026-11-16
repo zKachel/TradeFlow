@@ -123,3 +123,14 @@ sondern als „ersetzt durch ADR-xxx“ markieren.
   (Auftrag: nicht alle zukünftigen Tabellen auf einmal). Die Datenbank prüft nur das Format der
   `category_id`; die inhaltliche Prüfung macht der Server mit denselben Zod-Schemas wie das Formular.
   8 Pilot-Bereiche (11 Kategorien) haben ausführliche Fragen und werden im Formular zuerst angezeigt.
+
+## ADR-016 · Entscheidungen aus Review Sprint 2 (16.11.2026)
+
+- **Status:** angenommen (Luis + ChatGPT)
+- **E-Mail:** Für lokale Tests Supabase Auth (Standard-Versand). Vor dem Pilot DSGVO-geeigneten SMTP-Anbieter
+  mit EU-Datenverarbeitung prüfen (z. B. Brevo). Kein kostenpflichtiges Abo ohne Zustimmung.
+  „Confirm email“ darf lokal vorübergehend aus sein, muss vor einem Pilot wieder an sein.
+- **Kundenkonto:** Im MVP verpflichtend. Gastanfragen evtl. später, wenn Registrierung nachweislich abschreckt.
+- **Moderation:** Kundenanfragen werden im Pilot manuell von einem berechtigten Plattformadministrator geprüft;
+  nur geprüfte Anfragen werden für Betriebe sichtbar. (Admin-Weg wird in einem späteren Sprint gebaut, siehe ADR-009.)
+- **Ablauf:** Sprint 3 erst nach erfolgreichem Integrationstest mit echtem Supabase.
