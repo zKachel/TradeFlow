@@ -3,40 +3,33 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import {
-  ClipboardList,
-  Inbox,
-  LayoutDashboard,
-  LogOut,
-  Users,
-} from "lucide-react";
-import { DemoBanner, Logo } from "./brand";
-import { DEMO_COMPANY } from "@/lib/demo-data";
+import { ClipboardList, Inbox, LayoutDashboard, Users } from "lucide-react";
+import { Logo } from "./brand";
 
 const NAV = [
   {
-    href: "/betrieb",
+    href: "",
     label: "Übersicht",
     short: "Übersicht",
     icon: LayoutDashboard,
     section: "own",
   },
   {
-    href: "/betrieb/auftraege",
+    href: "/auftraege",
     label: "Eigene Aufträge",
     short: "Aufträge",
     icon: ClipboardList,
     section: "own",
   },
   {
-    href: "/betrieb/team",
+    href: "/team",
     label: "Team",
     short: "Team",
     icon: Users,
     section: "own",
   },
   {
-    href: "/betrieb/marktplatz",
+    href: "/marktplatz",
     label: "Marktplatz-Anfragen",
     short: "Marktplatz",
     icon: Inbox,
@@ -44,21 +37,39 @@ const NAV = [
   },
 ] as const;
 
-function isActive(pathname: string, href: string) {
-  return href === "/betrieb" ? pathname === href : pathname.startsWith(href);
+function isActive(pathname: string, base: string, href: string) {
+  return href === "" ? pathname === base : pathname.startsWith(base + href);
 }
 
-export function CompanyShell({ children }: { children: ReactNode }) {
+export interface CompanyShellProps {
+  children: ReactNode;
+  /** Basis-Pfad: "/betrieb" (echt) oder "/demo/betrieb" (Demo). */
+  base: string;
+  banner: ReactNode;
+  companyName: string;
+  statusLabel: string;
+  /** Aktion unten in der Seitenleiste / oben rechts mobil (z. B. Abmelden-Formular). */
+  exitAction: ReactNode;
+}
+
+export function CompanyShell({
+  children,
+  base,
+  banner,
+  companyName,
+  statusLabel,
+  exitAction,
+}: CompanyShellProps) {
   const pathname = usePathname();
 
   return (
     <>
-      <DemoBanner />
+      {banner}
       <div className="flex flex-1">
         {/* Desktop-Seitenleiste */}
         <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-line bg-surface lg:flex">
           <div className="flex h-16 items-center px-5">
-            <Logo href="/betrieb" subtitle="Betrieb" />
+            <Logo href={base} subtitle="Betrieb" />
           </div>
           <nav
             aria-label="Betriebsnavigation"
@@ -69,7 +80,8 @@ export function CompanyShell({ children }: { children: ReactNode }) {
                 <SideLink
                   key={n.href}
                   {...n}
-                  active={isActive(pathname, n.href)}
+                  href={base + n.href}
+                  active={isActive(pathname, base, n.href)}
                 />
               ))}
             </NavGroup>
@@ -78,31 +90,25 @@ export function CompanyShell({ children }: { children: ReactNode }) {
                 <SideLink
                   key={n.href}
                   {...n}
-                  active={isActive(pathname, n.href)}
+                  href={base + n.href}
+                  active={isActive(pathname, base, n.href)}
                   market
                 />
               ))}
             </NavGroup>
           </nav>
           <div className="m-3 rounded-xl bg-canvas p-3 text-sm">
-            <p className="leading-snug font-semibold">{DEMO_COMPANY.name}</p>
-            <p className="mt-1 text-xs text-muted">Status: unverifiziert</p>
-            <Link
-              href="/"
-              className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-ink"
-            >
-              <LogOut className="size-3.5" aria-hidden="true" /> Demo verlassen
-            </Link>
+            <p className="leading-snug font-semibold">{companyName}</p>
+            <p className="mt-1 text-xs text-muted">Status: {statusLabel}</p>
+            <div className="mt-3">{exitAction}</div>
           </div>
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Mobile Kopfzeile */}
           <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-surface/90 px-4 backdrop-blur lg:hidden">
-            <Logo href="/betrieb" subtitle="Betrieb" />
-            <Link href="/" className="text-sm font-medium text-muted">
-              Verlassen
-            </Link>
+            <Logo href={base} subtitle="Betrieb" />
+            {exitAction}
           </header>
 
           <main
@@ -120,11 +126,11 @@ export function CompanyShell({ children }: { children: ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
       >
         {NAV.map((n) => {
-          const active = isActive(pathname, n.href);
+          const active = isActive(pathname, base, n.href);
           return (
             <Link
               key={n.href}
-              href={n.href}
+              href={base + n.href}
               aria-current={active ? "page" : undefined}
               className={`flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold ${
                 active

@@ -2,25 +2,49 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeft,
   ArrowRight,
   Camera,
   CircleAlert,
   CircleCheck,
+  CloudOff,
+  Loader2,
+  MapPin,
+  RotateCcw,
   Lightbulb,
   Lock,
   Search,
   X,
 } from "lucide-react";
 import {
+  FEATURED_CATEGORIES,
   categoriesByGroup,
   describeDetails,
   getCategory,
   type FieldDef,
 } from "@/lib/categories";
-import { addDemoRequest, newDemoId } from "@/lib/demo-store";
+import { newUuid } from "@/lib/ids";
+import { assertReadableImage, prepareImage } from "@/lib/image-prepare";
+import { isInPilotRegion, PILOT_REGION_LABEL } from "@/lib/region";
+import {
+  clearDraft,
+  loadDraft,
+  OFFLINE_MESSAGE,
+  safeCall,
+  saveDraft,
+  uploadPhotos,
+  type PhotoStatus,
+  type RequestSubmitAdapter,
+} from "@/lib/request-submission";
 import {
   PHOTO_LIMITS,
   followUpQuestions,
@@ -53,10 +77,39 @@ interface FormValues {
 }
 
 interface Photo {
+  /** Zugleich clientFileId für den Upload (Wiederholen-sicher). */
   id: string;
   file: File;
   url: string;
+  status: PhotoStatus;
+  error?: string;
 }
+
+export interface RequestFormProps {
+  mode: "demo" | "live";
+  /** Pfad der Anfragenübersicht, z. B. "/kunde" oder "/demo/kunde". */
+  listPath: string;
+  adapter: RequestSubmitAdapter;
+  /** localStorage-Schlüssel für den automatisch gesicherten Entwurf. */
+  draftKey: string;
+}
+
+type Phase = "edit" | "sending" | "uploading" | "done";
+
+const emptyValues = (categoryId: string): FormValues => ({
+  categoryId,
+  title: "",
+  description: "",
+  postalCode: "",
+  city: "",
+  urgency: "",
+  budget: "",
+  details: {},
+  privacyAccepted: false,
+});
+
+const storage = () =>
+  typeof window === "undefined" ? undefined : window.localStorage;
 
 function omit(obj: Record<string, string>, key: string) {
   const copy = { ...obj };
@@ -69,28 +122,36 @@ const STEP_FIELDS: Record<number, string[]> = {
   2: ["postalCode", "city", "urgency", "budget"],
 };
 
-export function RequestForm() {
+export function RequestForm({
+  mode,
+  listPath,
+  adapter,
+  draftKey,
+}: RequestFormProps) {
   const params = useSearchParams();
   const preselected = params.get("kategorie");
   const initialCategory =
     preselected && getCategory(preselected) ? preselected : "";
 
   const [step, setStep] = useState(initialCategory ? 1 : 0);
-  const [values, setValues] = useState<FormValues>({
-    categoryId: initialCategory,
-    title: "",
-    description: "",
-    postalCode: "",
-    city: "",
-    urgency: "",
-    budget: "",
-    details: {},
-    privacyAccepted: false,
-  });
+  const [values, setValues] = useState<FormValues>(() =>
+    emptyValues(initialCategory),
+  );
+  const [clientRequestId, setClientRequestId] = useState<string>(() =>
+    newUuid(),
+  );
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [phase, setPhase] = useState<Phase>("edit");
+  const [submitError, setSubmitError] = useState<{
+    message: string;
+    offline: boolean;
+  } | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const inFlight = useRef(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [photoErrors, setPhotoErrors] = useState<string[]>([]);
-  const [submittedId, setSubmittedId] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
 
@@ -104,7 +165,50 @@ export function RequestForm() {
     }
     headingRef.current?.focus();
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [step, submittedId]);
+  }, [step, phase]);
+
+  // Entwurf wiederherstellen (z. B. nach versehentlichem Schließen oder Verbindungsabbruch).
+  useEffect(() => {
+    const draft = loadDraft<FormValues>(storage(), draftKey);
+    if (!draft) return;
+    if (initialCategory && draft.values.categoryId !== initialCategory) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- einmaliges Laden aus dem Browser-Speicher nach dem ersten Rendern
+    setValues({ ...emptyValues(""), ...draft.values, privacyAccepted: false });
+    setClientRequestId(draft.clientRequestId);
+    setStep(Math.min(Math.max(draft.step, 0), STEPS.length - 1));
+    setDraftRestored(true);
+  }, [draftKey, initialCategory]);
+
+  // Entwurf automatisch sichern (ohne Fotos).
+  useEffect(() => {
+    if (!dirty || phase === "done") return;
+    const t = setTimeout(
+      () => saveDraft(storage(), draftKey, { clientRequestId, step, values }),
+      400,
+    );
+    return () => clearTimeout(t);
+  }, [values, step, clientRequestId, dirty, phase, draftKey]);
+
+  // Warnung beim Verlassen mit ungespeicherten Eingaben bzw. laufendem Upload.
+  useEffect(() => {
+    const busy = phase === "sending" || phase === "uploading";
+    if (!(dirty && phase !== "done") && !busy) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty, phase]);
+
+  function discardDraft() {
+    clearDraft(storage(), draftKey);
+    setValues(emptyValues(""));
+    setClientRequestId(newUuid());
+    setStep(0);
+    setDraftRestored(false);
+    setDirty(false);
+    setErrors({});
+  }
 
   // Objekt-URLs der Vorschaubilder freigeben.
   const objectUrls = useRef(new Set<string>());
@@ -114,16 +218,19 @@ export function RequestForm() {
   }, []);
 
   function update<K extends keyof FormValues>(key: K, value: FormValues[K]) {
+    setDirty(true);
     setValues((v) => ({ ...v, [key]: value }));
     setErrors((e) => omit(e, key));
   }
 
   function updateDetail(id: string, value: string | boolean) {
+    setDirty(true);
     setValues((v) => ({ ...v, details: { ...v.details, [id]: value } }));
     setErrors((e) => omit(e, `details.${id}`));
   }
 
   function chooseCategory(id: string) {
+    setDirty(true);
     setValues((v) => ({
       ...v,
       categoryId: id,
@@ -162,19 +269,36 @@ export function RequestForm() {
     setStep((s) => Math.max(s - 1, 0));
   }
 
-  function addPhotos(list: FileList | null) {
+  async function addPhotos(list: FileList | null) {
     if (!list) return;
     const incoming = Array.from(list);
     const all = [...photos.map((p) => p.file), ...incoming];
     const errs = validatePhotos(
       all.map((f) => ({ name: f.name, type: f.type, size: f.size })),
     );
-    setPhotoErrors(errs);
-    if (errs.length) return;
-    const added = incoming.map((file) => ({
-      id: newDemoId("foto"),
+    if (errs.length) {
+      setPhotoErrors(errs);
+      return;
+    }
+    // Fehlerhafte/beschädigte Dateien direkt beim Auswählen erkennen.
+    const readable: File[] = [];
+    const readErrors: string[] = [];
+    for (const file of incoming) {
+      try {
+        await assertReadableImage(file);
+        readable.push(file);
+      } catch {
+        readErrors.push(
+          `„${file.name}“ ist beschädigt oder kein lesbares Bild.`,
+        );
+      }
+    }
+    setPhotoErrors(readErrors);
+    const added: Photo[] = readable.map((file) => ({
+      id: newUuid(),
       file,
       url: URL.createObjectURL(file),
+      status: "wartet",
     }));
     added.forEach((p) => objectUrls.current.add(p.url));
     setPhotos((p) => [...p, ...added]);
@@ -192,12 +316,36 @@ export function RequestForm() {
     setPhotoErrors([]);
   }
 
-  function submit(e: React.FormEvent) {
+  const setPhotoStatus = useCallback(
+    (id: string, status: PhotoStatus, error?: string) => {
+      setPhotos((ps) =>
+        ps.map((p) => (p.id === id ? { ...p, status, error } : p)),
+      );
+    },
+    [],
+  );
+
+  async function runUploads(reqId: string, list: Photo[]) {
+    setPhase("uploading");
+    await uploadPhotos(
+      reqId,
+      list,
+      (p) => prepareImage(p.file),
+      adapter.uploadPhoto,
+      setPhotoStatus,
+    );
+    setPhase("done");
+  }
+
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (step < STEPS.length - 1) {
       next();
       return;
     }
+    // Schutz gegen Doppelklick / doppeltes Absenden
+    if (inFlight.current || phase !== "edit") return;
+
     const base = validateBase(values);
     const details = validateDetails(values.categoryId, values.details);
     if (!base.success || !details.success) {
@@ -216,51 +364,147 @@ export function RequestForm() {
       if (firstStep !== undefined) setStep(firstStep);
       return;
     }
-    const id = newDemoId("anfrage");
-    addDemoRequest({
-      id,
-      isDemo: true,
-      categoryId: base.data.categoryId,
-      title: base.data.title,
-      description: base.data.description,
-      postalCode: base.data.postalCode,
-      city: base.data.city,
-      urgency: base.data.urgency,
-      budget: base.data.budget,
-      details: details.data,
-      photoCount: photos.length,
-      status: "eingereicht",
-      createdAt: new Date().toISOString().slice(0, 10),
-      offerCount: 0,
-    });
-    setSubmittedId(id);
+
+    inFlight.current = true;
+    setSubmitError(null);
+    setPhase("sending");
+    saveDraft(storage(), draftKey, { clientRequestId, step, values });
+    const result = await safeCall(() =>
+      adapter.submitRequest({
+        clientRequestId,
+        categoryId: base.data.categoryId,
+        title: base.data.title,
+        description: base.data.description,
+        postalCode: base.data.postalCode,
+        city: base.data.city,
+        urgency: base.data.urgency,
+        budget: base.data.budget,
+        details: details.data,
+      }),
+    );
+    inFlight.current = false;
+
+    if (!result.ok) {
+      setPhase("edit");
+      if ("fieldErrors" in result && result.fieldErrors)
+        setErrors(result.fieldErrors);
+      setSubmitError({
+        message: result.error,
+        offline: result.error === OFFLINE_MESSAGE,
+      });
+      return;
+    }
+
+    // Anfrage ist gespeichert → Entwurf löschen, dann Fotos hochladen.
+    clearDraft(storage(), draftKey);
+    setDirty(false);
+    setRequestId(result.requestId);
+    if (photos.length > 0) await runUploads(result.requestId, photos);
+    else setPhase("done");
   }
 
-  if (submittedId) {
+  if (phase === "uploading" || (phase === "done" && requestId)) {
+    const failed = photos.filter((p) => p.status === "fehler");
+    const uploading = phase === "uploading";
     return (
-      <Card className="p-6 text-center sm:p-10">
-        <CircleCheck
-          className="mx-auto size-14 text-brand-500"
-          aria-hidden="true"
-        />
-        <h1
-          ref={headingRef}
-          tabIndex={-1}
-          className="mt-4 text-2xl font-bold tracking-tight"
-        >
-          Anfrage eingereicht (Demo)
-        </h1>
-        <p className="mx-auto mt-2 max-w-md text-muted">
-          In der echten Version wird Ihre Anfrage jetzt kurz geprüft und dann
-          passenden Betrieben angezeigt – ohne Ihre Kontaktdaten. In dieser Demo
-          ist sie nur in Ihrem Browser gespeichert.
-        </p>
-        <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-          <LinkButton href="/kunde">Zu meinen Anfragen</LinkButton>
-          <LinkButton href="/" variant="secondary">
-            Zur Startseite
-          </LinkButton>
+      <Card className="p-6 sm:p-10">
+        <div className="text-center">
+          {uploading ? (
+            <Loader2
+              className="mx-auto size-14 animate-spin text-brand-500"
+              aria-hidden="true"
+            />
+          ) : (
+            <CircleCheck
+              className="mx-auto size-14 text-brand-500"
+              aria-hidden="true"
+            />
+          )}
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className="mt-4 text-2xl font-bold tracking-tight"
+          >
+            {uploading
+              ? "Fotos werden hochgeladen …"
+              : mode === "demo"
+                ? "Anfrage eingereicht (Demo)"
+                : "Anfrage eingereicht"}
+          </h1>
+          <p className="mx-auto mt-2 max-w-md text-muted" aria-live="polite">
+            {uploading
+              ? "Bitte lassen Sie diese Seite geöffnet."
+              : mode === "demo"
+                ? "In dieser Demo ist die Anfrage nur in Ihrem Browser gespeichert."
+                : "Ihre Anfrage ist sicher gespeichert. In der Pilotphase prüfen wir sie, bevor sie passenden Betrieben angezeigt wird – ohne Ihre Kontaktdaten."}
+          </p>
         </div>
+
+        {photos.length > 0 && (
+          <ul
+            className="mx-auto mt-6 max-w-md space-y-2 text-sm"
+            aria-label="Foto-Uploads"
+          >
+            {photos.map((p) => (
+              <li
+                key={p.id}
+                className="flex items-center gap-3 rounded-lg bg-canvas px-3 py-2"
+              >
+                <span className="min-w-0 flex-1 truncate">{p.file.name}</span>
+                <span
+                  className={`shrink-0 font-semibold ${
+                    p.status === "ok"
+                      ? "text-brand-700"
+                      : p.status === "fehler"
+                        ? "text-rose-700"
+                        : "text-muted"
+                  }`}
+                >
+                  {p.status === "ok"
+                    ? "Hochgeladen"
+                    : p.status === "fehler"
+                      ? "Fehler"
+                      : p.status === "laedt"
+                        ? "Lädt …"
+                        : "Wartet"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!uploading && failed.length > 0 && (
+          <div
+            role="alert"
+            className="mx-auto mt-4 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+          >
+            <p className="font-semibold">
+              {failed.length === 1
+                ? "1 Foto konnte nicht hochgeladen werden."
+                : `${failed.length} Fotos konnten nicht hochgeladen werden.`}
+            </p>
+            <p className="mt-1">{failed[0].error}</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="mt-3"
+              onClick={() => requestId && runUploads(requestId, photos)}
+            >
+              <RotateCcw className="size-4" aria-hidden="true" /> Erneut
+              versuchen
+            </Button>
+          </div>
+        )}
+
+        {!uploading && (
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <LinkButton href={listPath}>Zu meinen Anfragen</LinkButton>
+            <LinkButton href="/" variant="secondary">
+              Zur Startseite
+            </LinkButton>
+          </div>
+        )}
       </Card>
     );
   }
@@ -288,13 +532,49 @@ export function RequestForm() {
   return (
     <form onSubmit={submit} noValidate>
       <Link
-        href="/kunde"
+        href={listPath}
         className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-ink"
       >
         <ArrowLeft className="size-4" aria-hidden="true" /> Meine Anfragen
       </Link>
 
       <Progress step={step} />
+
+      {draftRestored && (
+        <div
+          role="status"
+          className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-900"
+        >
+          <span>Ihr gespeicherter Entwurf wurde wiederhergestellt.</span>
+          <button
+            type="button"
+            onClick={discardDraft}
+            className="font-semibold underline underline-offset-4"
+          >
+            Neu beginnen
+          </button>
+        </div>
+      )}
+
+      {submitError && (
+        <div
+          role="alert"
+          className="mt-4 flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"
+        >
+          {submitError.offline ? (
+            <CloudOff className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+          ) : (
+            <CircleAlert
+              className="mt-0.5 size-5 shrink-0"
+              aria-hidden="true"
+            />
+          )}
+          <div>
+            <p className="font-semibold">Anfrage wurde nicht gesendet.</p>
+            <p className="mt-0.5">{submitError.message}</p>
+          </div>
+        </div>
+      )}
 
       <h1
         ref={headingRef}
@@ -416,6 +696,21 @@ export function RequestForm() {
               Die genaue Adresse fragen wir erst ab, wenn Sie sich für einen
               Betrieb entschieden haben.
             </p>
+            {/^\d{5}$/.test(values.postalCode) &&
+              !isInPilotRegion(values.postalCode) && (
+                <p
+                  role="status"
+                  className="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-sm text-amber-900"
+                >
+                  <MapPin
+                    className="mt-0.5 size-4 shrink-0"
+                    aria-hidden="true"
+                  />
+                  Die Pilotphase läuft zunächst in {PILOT_REGION_LABEL}. Sie
+                  können die Anfrage trotzdem stellen – Betriebe in Ihrer Region
+                  folgen später.
+                </p>
+              )}
             <ChoiceGroup
               label="Gewünschter Zeitraum"
               required
@@ -442,6 +737,7 @@ export function RequestForm() {
         {step === 3 && category && (
           <div className="space-y-4">
             <PhotoStep
+              demo={mode === "demo"}
               photos={photos}
               errors={photoErrors}
               onAdd={addPhotos}
@@ -492,9 +788,23 @@ export function RequestForm() {
           >
             <ArrowLeft className="size-4" aria-hidden="true" /> Zurück
           </Button>
-          <Button type="submit" className="flex-[2] sm:ml-auto sm:flex-none">
+          <Button
+            type="submit"
+            className="flex-[2] sm:ml-auto sm:flex-none"
+            disabled={phase === "sending"}
+            aria-busy={phase === "sending"}
+          >
             {step === STEPS.length - 1 ? (
-              "Anfrage absenden"
+              phase === "sending" ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />{" "}
+                  Wird gesendet …
+                </>
+              ) : submitError ? (
+                "Erneut senden"
+              ) : (
+                "Anfrage absenden"
+              )
             ) : (
               <>
                 Weiter <ArrowRight className="size-4" aria-hidden="true" />
@@ -589,6 +899,34 @@ function CategoryStep({
       )}
 
       <div className="mt-6 space-y-6">
+        {!query.trim() && (
+          <section aria-labelledby="grp-beliebt">
+            <h2
+              id="grp-beliebt"
+              className="mb-2 text-sm font-semibold tracking-wide text-accent-600 uppercase"
+            >
+              Häufig angefragt
+            </h2>
+            <ul className="flex flex-wrap gap-2">
+              {FEATURED_CATEGORIES.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(c.id)}
+                    aria-pressed={selected === c.id}
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      selected === c.id
+                        ? "border-brand-500 bg-brand-50 text-brand-700"
+                        : "border-line bg-surface hover:border-brand-500"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {groups.map(({ group, categories }) => (
           <section key={group.id} aria-labelledby={`grp-${group.id}`}>
             <h2
@@ -634,7 +972,9 @@ function PhotoStep({
   errors,
   onAdd,
   onRemove,
+  demo,
 }: {
+  demo: boolean;
   photos: Photo[];
   errors: string[];
   onAdd: (f: FileList | null) => void;
@@ -651,7 +991,8 @@ function PhotoStep({
       </div>
       <p className="mt-1 text-sm text-muted">
         Fotos helfen Betrieben, die Arbeit einzuschätzen. JPG, PNG, WebP oder
-        HEIC, max. 10 MB.
+        HEIC, max. 10 MB. Fotos werden verkleinert und ohne Standortdaten
+        gespeichert.
       </p>
       <ul className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
         {photos.map((p) => (
@@ -706,8 +1047,9 @@ function PhotoStep({
         </ul>
       )}
       <p className="mt-3 text-xs text-muted">
-        Demo: Fotos werden nur als Vorschau angezeigt, nicht hochgeladen und
-        nicht gespeichert.
+        {demo
+          ? "Demo: Fotos werden nur als Vorschau angezeigt, nicht hochgeladen und nicht gespeichert."
+          : "Fotos werden privat gespeichert. Nur Sie sehen sie – Betriebe erst nach Ihrer Freigabe."}
       </p>
     </Card>
   );

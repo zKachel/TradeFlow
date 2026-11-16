@@ -98,3 +98,19 @@ export function newDemoId(prefix: string) {
       : Math.random().toString(36).slice(2, 10);
   return `${prefix}-${rand}`;
 }
+
+export function incrementDemoPhotoCount(requestId: string) {
+  write(
+    "tradeflow-demo-requests",
+    read("tradeflow-demo-requests").map((r) =>
+      r.id === requestId ? { ...r, photoCount: r.photoCount + 1 } : r,
+    ),
+  );
+}
+
+/** Für das Demo-Formular: gleiche clientRequestId → gleiche Anfrage (wie in der echten Datenbank). */
+export function findDemoRequestByClientId(clientRequestId: string) {
+  return read("tradeflow-demo-requests").find(
+    (r) => r.clientRequestId === clientRequestId,
+  );
+}

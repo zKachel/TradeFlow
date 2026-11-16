@@ -1,6 +1,6 @@
 # TASKS
 
-Stand: 16.11.2026 · Grundlage: [`docs/MASTERPLAN.md`](docs/MASTERPLAN.md)
+Stand: 16.11.2026 (Sprint 2 umgesetzt, wartet auf Test mit echtem Supabase-Projekt) · Grundlage: [`docs/MASTERPLAN.md`](docs/MASTERPLAN.md)
 
 Legende: `[x]` fertig und getestet · `[~]` nur als Demo/Mock · `[ ]` offen
 
@@ -30,17 +30,59 @@ Legende: `[x]` fertig und getestet · `[~]` nur als Demo/Mock · `[ ]` offen
 - [x] Barrierearmut: Labels, Fokus-Ring, Tastaturbedienung, `aria-*`, reduzierte Bewegung
 - [x] Abnahme: auf 390 px (Handy) und 1440 px (Desktop) per Screenshot geprüft; Klicktest Anfrage → Dashboard → Neuladen, Auftrag anlegen → Liste
 
-## Sprint 2 – Echte Kernfunktionalität ⏸ wartet auf Freigabe
+## Sprint 2 – Echte Kernfunktionalität ✅ (Code fertig, Test mit echtem Supabase offen)
 
-- [ ] Supabase-Projekt anlegen (Region EU, kostenloser Plan) – **Freigabe nötig**
-- [ ] Authentifizierung: Registrierung, Login, Passwort-Reset
-- [ ] Datenmodell + versionierte Migrationen (siehe `DECISIONS.md`, ADR-006)
-- [ ] RLS-Policies für alle Tabellen
-- [ ] Kundenanfragen serverseitig speichern (gleiche Zod-Schemas wie im Formular)
-- [ ] Private Bild-Uploads (privater Bucket, signierte URLs, Typ-/Größenlimits)
-- [ ] Eigene Firmenaufträge erstellen, bearbeiten, filtern
-- [ ] Negativtests: Nutzer A kann Daten von Nutzer B weder lesen noch ändern
-- [ ] `demo-store.ts` und Demo-Daten durch echte Daten ersetzen (Demo-Modus optional behalten)
+Freigabe: 16.11.2026. Schwerpunkt: Datenbank, Login, Firmenverwaltung.
+
+### Datenbank & Sicherheit
+
+- [x] Migrationen (`supabase/migrations/`): profiles, companies, company_memberships, customer_requests,
+      request_attachments, company_jobs, job_notes, audit_events + privater Storage-Bucket
+- [x] RLS auf allen Tabellen; `anon` hat keinerlei Zugriff; Tabellenrechte spaltengenau
+- [x] Kundenanfragen und Firmenaufträge getrennt (ADR-006)
+- [x] Statuswechsel mit Zeit und Nutzer protokolliert (Trigger → audit_events)
+- [x] Missbrauchsschutz: max. 10 Anfragen/24 h, max. 6 Fotos/Anfrage, geschützte Felder per Trigger
+- [x] 38 Datenbanktests mit PGlite inkl. Negativtests (Nutzer/Firma A ↔ B, Kunde ↔ Betrieb, anon)
+- [ ] Migrationen im echten Supabase-Projekt einspielen (**Luis**, Anleitung `docs/SUPABASE_SETUP.md`)
+
+### Anmeldung
+
+- [x] Registrierung mit Kontoart (Auftraggeber/Betrieb), Login, Logout, Passwort vergessen/neu
+- [x] E-Mail-Bestätigung (token_hash und PKCE), sichere Weiterleitung (kein Open Redirect)
+- [x] Routenschutz: `src/proxy.ts` (Anmeldung) + serverseitige Kontoart-Prüfung in Layouts + RLS
+- [x] Keine Konto-Aufzählung über Fehlermeldungen; Unterscheidung „Server nicht erreichbar“
+- [ ] Ende-zu-Ende-Test mit echtem Supabase-Projekt (**Luis**, Testablauf in SUPABASE_SETUP.md)
+
+### Firmenverwaltung (priorisiert)
+
+- [x] Betrieb einrichten (Name, PLZ, Ort, Einsatzradius, Gewerke) – Status „unverifiziert“
+- [x] Firmenprofil bearbeiten (nur Inhaber)
+- [x] Aufträge dauerhaft speichern, bearbeiten, Status ändern, filtern, suchen
+- [x] Notizen und Verlauf je Auftrag
+- [x] Schutz gegen gleichzeitiges Bearbeiten (Änderung wird abgelehnt, wenn inzwischen geändert)
+- [x] Übersicht: offene Aufträge, Termine heute (deutsche Zeit), nächste Termine, Neue ohne Termin
+- [x] Team-Ansicht mit echten Mitgliedern (Einladen: Sprint 3)
+
+### Kundenanfragen
+
+- [x] Anfragen dauerhaft speichern, eigene Anfragen ansehen, zurückziehen
+- [x] Doppelte Einsendung verhindert (Formular-ID + Datenbank-Unique + Klick-Sperre)
+- [x] Netzwerkunterbrechung: Meldung, Eingaben bleiben, Wiederholen ohne Duplikat
+- [x] Formularabbruch: Entwurf wird automatisch gesichert und wiederhergestellt (7 Tage)
+- [x] Fotos: Prüfung beim Auswählen (beschädigt/falscher Typ/zu groß), Verkleinerung im Browser
+      (entfernt GPS-Daten), Server prüft echte Bildsignatur, privater Bucket, signierte URLs (10 Min.)
+- [x] Einzelne fehlgeschlagene Foto-Uploads können wiederholt werden
+- [x] Alle 32 Kategorien; 8 Pilot-Bereiche mit ausführlichen Fragen (Maler, Gartenpflege,
+      Entrümpelung, Bodenverlegung, Reinigung, Möbel-/Küchenmontage, Pflaster-/Terrassenarbeiten, Sanitär)
+- [x] Pilotregion Friesoythe/Landkreis Cloppenburg (Hinweis bei anderer PLZ, Architektur bundesweit)
+
+### Qualität
+
+- [x] `npm audit`: 0 Warnungen (Dev-Abhängigkeiten aktualisiert)
+- [x] 90 automatische Tests (Unit, Datenbank/RLS, Formular-Robustheit mit jsdom)
+- [x] Browser-Tests (Chrome): Weiterleitungen, Login-/Registrierungsfehler, Demo-Formular mit echten
+      Bilddateien (beschädigt, SVG, PNG), Doppelklick, Entwurf nach Neuladen
+- [x] Demo bleibt unter `/demo` vollständig erhalten
 
 ## Sprint 3 – Betriebe und Mitarbeiter
 
@@ -58,6 +100,12 @@ Legende: `[x]` fertig und getestet · `[~]` nur als Demo/Mock · `[ ]` offen
 
 ## Offen / vor öffentlichem Start (nicht eigenmächtig entscheiden)
 
+- [ ] „Confirm email“ in Supabase wieder einschalten, falls zum Testen ausgeschaltet
+- [ ] Eigener E-Mail-Versand (SMTP) für Bestätigungs-/Passwort-E-Mails – Anbieter wählen (ggf. Kosten)
+- [ ] Content-Security-Policy (CSP) ergänzen
+- [ ] Postleitzahlen der Pilotregion prüfen (`src/lib/region.ts`)
+- [ ] Rate-Limits für Login/Registrierung in Supabase prüfen
+
 - [ ] Impressum, Datenschutzerklärung, AVV – rechtlich prüfen lassen
 - [ ] Name/Logo/Markenprüfung „TradeFlow“
 - [ ] Pilotmarkt und Region
@@ -66,10 +114,17 @@ Legende: `[x]` fertig und getestet · `[~]` nur als Demo/Mock · `[ ]` offen
 - [ ] Anfrage an einzelne oder mehrere Betriebe?
 - [ ] Hosting-Anbieter (Vercel o. a.) – **Freigabe nötig**
 
-## Bekannte Einschränkungen der Demo
+## Bekannte Einschränkungen
+
+- Ende-zu-Ende-Tests gegen ein echtes Supabase-Projekt waren in der Entwicklungsumgebung nicht möglich
+  (kein Zugriff auf supabase.co). Datenbanklogik ist mit PGlite getestet, Oberfläche mit jsdom/Chrome.
+- Ausführende Mitarbeiter sehen bis Sprint 3 (Zuweisungen) keine Aufträge.
+- Wird ein Foto hochgeladen und die Zuordnung schlägt danach fehl, kann eine verwaiste Datei im
+  privaten Bucket bleiben (selten; Aufräumjob später).
+
+### Demo (`/demo`)
 
 - Daten nur im Browser (`localStorage`), gehen bei „Browserdaten löschen“ verloren.
 - Fotos werden nicht gespeichert.
 - Statuswechsel, Angebote, Einladungen sind nur angedeutet (deaktivierte Buttons mit Hinweis).
 - Demo-Datum ist fest auf 17.11.2026 gesetzt, damit die Termine stabil bleiben.
-- `npm audit` meldet moderate Hinweise in Entwicklungsabhängigkeiten; vor Sprint 2 prüfen.

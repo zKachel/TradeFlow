@@ -66,6 +66,7 @@ export type DetailValue = string | number | boolean;
 export interface CustomerRequest {
   id: string;
   isDemo: true;
+  clientRequestId?: string;
   categoryId: string;
   title: string;
   description: string;

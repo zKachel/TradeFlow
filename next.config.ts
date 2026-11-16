@@ -14,6 +14,12 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
+  experimental: {
+    serverActions: {
+      // Fotos werden im Browser auf ≤ 2048 px verkleinert; 5 MB + Formular-Overhead.
+      bodySizeLimit: "6mb",
+    },
+  },
   turbopack: {
     rules: {
       "*.css": {

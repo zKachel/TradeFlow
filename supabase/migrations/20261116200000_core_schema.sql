@@ -121,6 +121,16 @@ language sql stable security definer set search_path = '' as $$
   select p.account_type from public.profiles p where p.id = auth.uid()
 $$;
 
+create function private.shares_company_with(p_user uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1
+    from public.company_memberships mine
+    join public.company_memberships theirs on theirs.company_id = mine.company_id
+    where mine.user_id = auth.uid() and theirs.user_id = p_user
+  )
+$$;
+
 grant execute on all functions in schema private to authenticated;
 
 -- ---------- Firma anlegen: nur über diese Funktion (Firma + Inhaber-Mitgliedschaft atomar) ----------
@@ -196,7 +206,7 @@ declare
   v_recent integer;
 begin
   -- Systemprozesse (service_role / Admin) sind nicht eingeschränkt.
-  if auth.role() is distinct from 'authenticated' then
+  if (auth.jwt() ->> 'role') is distinct from 'authenticated' then
     return new;
   end if;
 
@@ -259,7 +269,7 @@ create index request_attachments_request_idx on public.request_attachments (requ
 create function private.guard_request_attachment() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  if auth.role() is distinct from 'authenticated' then
+  if (auth.jwt() ->> 'role') is distinct from 'authenticated' then
     return new;
   end if;
   if new.owner_id is distinct from auth.uid()
@@ -305,7 +315,7 @@ create trigger company_jobs_updated_at before update on public.company_jobs
 create function private.guard_company_job() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  if auth.role() is distinct from 'authenticated' then
+  if (auth.jwt() ->> 'role') is distinct from 'authenticated' then
     return new;
   end if;
   if tg_op = 'INSERT' then
@@ -346,7 +356,7 @@ begin
   if new.company_id is null then
     raise exception 'Auftrag nicht gefunden' using errcode = '23503';
   end if;
-  if auth.role() = 'authenticated' then
+  if (auth.jwt() ->> 'role') = 'authenticated' then
     new.author_id := auth.uid();
   end if;
   return new;
@@ -454,6 +464,9 @@ alter table public.audit_events enable row level security;
 -- profiles: nur das eigene Profil
 create policy profiles_select_own on public.profiles for select to authenticated
   using (id = (select auth.uid()));
+-- Kollegen derselben Firma sehen Namen und Kontoart (für Team-Übersicht)
+create policy profiles_select_colleague on public.profiles for select to authenticated
+  using (private.shares_company_with(id));
 create policy profiles_update_own on public.profiles for update to authenticated
   using (id = (select auth.uid())) with check (id = (select auth.uid()));
 

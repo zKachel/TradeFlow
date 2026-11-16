@@ -21,7 +21,8 @@ import {
   Zap,
   Hammer,
 } from "lucide-react";
-import { DemoBanner, Logo } from "@/components/brand";
+import { Logo } from "@/components/brand";
+import { PilotBanner } from "@/components/brand-pilot";
 import { LinkButton } from "@/components/ui";
 
 const categoryTiles = [
@@ -39,7 +40,7 @@ const categoryTiles = [
 export default function LandingPage() {
   return (
     <>
-      <DemoBanner />
+      <PilotBanner />
       <header className="sticky top-0 z-30 border-b border-line/70 bg-canvas/85 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <Logo />
@@ -59,12 +60,12 @@ export default function LandingPage() {
             >
               Für Betriebe
             </a>
-            <LinkButton href="/betrieb" variant="ghost" size="sm">
-              Zum Betrieb
+            <LinkButton href="/anmelden" variant="ghost" size="sm">
+              Anmelden
             </LinkButton>
             <span className="hidden sm:block">
-              <LinkButton href="/kunde/anfrage/neu" size="sm">
-                Anfrage stellen
+              <LinkButton href="/registrieren" size="sm">
+                Registrieren
               </LinkButton>
             </span>
           </nav>
@@ -107,19 +108,19 @@ export default function LandingPage() {
                   primary
                 />
                 <EntryCard
-                  href="/betrieb"
+                  href="/registrieren?typ=betrieb"
                   icon={<Building2 className="size-5" />}
                   title="Ich bin ein Betrieb"
                   text="Aufträge, Team und Termine im Griff"
                 />
               </div>
               <p className="mt-4 text-sm text-muted">
-                Für Auftraggeber kostenlos. Schon gestellt?{" "}
+                Für Auftraggeber kostenlos. Erst mal schauen?{" "}
                 <Link
-                  href="/kunde"
+                  href="/demo"
                   className="font-semibold text-brand-700 underline-offset-4 hover:underline"
                 >
-                  Meine Anfragen ansehen
+                  Demo ansehen
                 </Link>
               </p>
             </div>
@@ -237,15 +238,22 @@ export default function LandingPage() {
                 Ihre bestehenden Aufträge. Passende Anfragen aus der Region
                 kommen als Extra dazu – klar getrennt.
               </p>
-              <LinkButton
-                href="/betrieb"
-                variant="accent"
-                size="lg"
-                className="mt-8"
-              >
-                Firmen-Dashboard ansehen{" "}
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </LinkButton>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <LinkButton
+                  href="/registrieren?typ=betrieb"
+                  variant="accent"
+                  size="lg"
+                >
+                  Als Betrieb registrieren{" "}
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </LinkButton>
+                <Link
+                  href="/demo/betrieb"
+                  className="inline-flex h-13 items-center justify-center rounded-xl border border-white/25 px-6 font-semibold text-white transition hover:bg-white/10"
+                >
+                  Demo ansehen
+                </Link>
+              </div>
             </div>
             <ul className="grid gap-3 sm:grid-cols-2">
               {[
@@ -332,7 +340,9 @@ export default function LandingPage() {
 
       <footer className="border-t border-line bg-surface">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-8 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p>© 2026 TradeFlow · Demo-Version, kein Live-Betrieb</p>
+          <p>
+            © 2026 TradeFlow · Geschlossene Testphase, kein öffentlicher Betrieb
+          </p>
           <p>
             Impressum und Datenschutzerklärung folgen vor dem öffentlichen
             Start.

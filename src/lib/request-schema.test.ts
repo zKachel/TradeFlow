@@ -51,6 +51,54 @@ describe("Kategorien", () => {
   });
 });
 
+describe("Pilot-Kategorien", () => {
+  const PILOT = [
+    "maler",
+    "rasenpflege",
+    "heckenschnitt",
+    "entruempelung",
+    "bodenbelaege",
+    "reinigung",
+    "moebelmontage",
+    "kuechenmontage",
+    "pflaster",
+    "terrassenbau",
+    "sanitaer",
+  ];
+
+  it("alle 32 Kategorien bleiben erhalten", () => {
+    expect(CATEGORIES).toHaveLength(32);
+  });
+
+  it("die 8 Pilot-Bereiche (11 Kategorien) haben ausführliche Fragen", () => {
+    for (const id of PILOT) {
+      const c = getCategory(id)!;
+      expect(c.featured, id).toBe(true);
+      expect(c.fields.length, id).toBeGreaterThanOrEqual(4);
+      expect(
+        c.fields.some((f) => f.required),
+        id,
+      ).toBe(true);
+    }
+  });
+
+  it("Pflichtfelder der Pilot-Kategorien werden geprüft", () => {
+    expect(validateDetails("reinigung", {}).success).toBe(false);
+    expect(validateDetails("reinigung", { art: "fenster" }).success).toBe(true);
+    expect(
+      validateDetails("entruempelung", {
+        raeume: "2",
+        inhalt: "hausrat",
+        etage: "eg",
+      }).success,
+    ).toBe(true);
+    expect(validateDetails("sanitaer", { art: "leck" }).success).toBe(false);
+    expect(
+      validateDetails("sanitaer", { art: "leck", objekt: "haus" }).success,
+    ).toBe(true);
+  });
+});
+
 describe("validateBase", () => {
   it("akzeptiert eine gültige Anfrage", () => {
     const r = validateBase(validBase);
@@ -120,7 +168,8 @@ describe("validateDetails", () => {
 describe("followUpQuestions", () => {
   it("stellt Rückfragen für leere optionale Felder", () => {
     const q = followUpQuestions("maler", { flaeche: 20, bereich: "innen" });
-    expect(q.length).toBe(2);
+    // raeume, zustand, untergrund, moebliert
+    expect(q.length).toBe(4);
   });
 
   it("stellt keine Rückfragen, wenn alles ausgefüllt ist", () => {
@@ -129,6 +178,8 @@ describe("followUpQuestions", () => {
       bereich: "innen",
       zustand: "gut",
       untergrund: "putz",
+      raeume: 3,
+      moebliert: false,
     });
     expect(q).toEqual([]);
   });

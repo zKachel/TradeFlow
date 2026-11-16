@@ -4,10 +4,25 @@
  * Schwerpunkt: Negativtests – Nutzer A darf Daten von Nutzer B weder lesen noch ändern.
  */
 import { beforeAll, describe, expect, it } from "vitest";
-import { asAnon, asUser, createTestDb, createUser, type Db } from "./db-harness";
+import {
+  asAnon,
+  asUser,
+  createTestDb,
+  createUser,
+  type Db,
+} from "./db-harness";
 
 let db: Db;
-const u = {} as Record<"kundeA" | "kundeB" | "inhaberA" | "inhaberB" | "bueroA" | "mitarbeiterA" | "fremd", string>;
+const u = {} as Record<
+  | "kundeA"
+  | "kundeB"
+  | "inhaberA"
+  | "inhaberB"
+  | "bueroA"
+  | "mitarbeiterA"
+  | "fremd",
+  string
+>;
 let companyA: string;
 let companyB: string;
 let jobA: string;
@@ -27,7 +42,10 @@ const requestRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-async function insertRequest(userId: string, over: Record<string, unknown> = {}) {
+async function insertRequest(
+  userId: string,
+  over: Record<string, unknown> = {},
+) {
   const r = requestRow(over);
   return asUser(db, userId, (tx) =>
     tx.query<{ id: string }>(
@@ -61,22 +79,37 @@ async function createCompany(userId: string, name: string) {
 
 beforeAll(async () => {
   db = await createTestDb();
-  u.kundeA = await createUser(db, "kunde-a@test.de", { account_type: "kunde", display_name: "Kunde A" });
-  u.kundeB = await createUser(db, "kunde-b@test.de", { account_type: "kunde", display_name: "Kunde B" });
-  u.inhaberA = await createUser(db, "inhaber-a@test.de", { account_type: "betrieb", display_name: "Inhaber A" });
-  u.inhaberB = await createUser(db, "inhaber-b@test.de", { account_type: "betrieb", display_name: "Inhaber B" });
-  u.bueroA = await createUser(db, "buero-a@test.de", { account_type: "betrieb" });
-  u.mitarbeiterA = await createUser(db, "ma-a@test.de", { account_type: "betrieb" });
+  u.kundeA = await createUser(db, "kunde-a@test.de", {
+    account_type: "kunde",
+    display_name: "Kunde A",
+  });
+  u.kundeB = await createUser(db, "kunde-b@test.de", {
+    account_type: "kunde",
+    display_name: "Kunde B",
+  });
+  u.inhaberA = await createUser(db, "inhaber-a@test.de", {
+    account_type: "betrieb",
+    display_name: "Inhaber A",
+  });
+  u.inhaberB = await createUser(db, "inhaber-b@test.de", {
+    account_type: "betrieb",
+    display_name: "Inhaber B",
+  });
+  u.bueroA = await createUser(db, "buero-a@test.de", {
+    account_type: "betrieb",
+  });
+  u.mitarbeiterA = await createUser(db, "ma-a@test.de", {
+    account_type: "betrieb",
+  });
   u.fremd = await createUser(db, "fremd@test.de", { account_type: "admin" });
 
   companyA = await createCompany(u.inhaberA, "Malerei A");
   companyB = await createCompany(u.inhaberB, "Boden B");
   // Einladungen kommen in Sprint 3 – hier direkt als Systemnutzer anlegen.
-  await db.query("insert into public.company_memberships values ($1,$2,'buero'), ($1,$3,'mitarbeiter')", [
-    companyA,
-    u.bueroA,
-    u.mitarbeiterA,
-  ]);
+  await db.query(
+    "insert into public.company_memberships values ($1,$2,'buero'), ($1,$3,'mitarbeiter')",
+    [companyA, u.bueroA, u.mitarbeiterA],
+  );
 
   const job = await asUser(db, u.inhaberA, (tx) =>
     tx.query<{ id: string }>(
@@ -91,7 +124,11 @@ beforeAll(async () => {
 
 describe("Profile", () => {
   it("werden bei der Registrierung mit Kontotyp angelegt", async () => {
-    const r = await db.query<{ id: string; account_type: string; display_name: string }>(
+    const r = await db.query<{
+      id: string;
+      account_type: string;
+      display_name: string;
+    }>(
       "select id, account_type, display_name from public.profiles order by display_name",
     );
     const byId = Object.fromEntries(r.rows.map((x) => [x.id, x]));
@@ -104,23 +141,54 @@ describe("Profile", () => {
   });
 
   it("sind nur für den Eigentümer sichtbar", async () => {
-    const r = await asUser(db, u.kundeA, (tx) => tx.query("select id from public.profiles"));
+    const r = await asUser(db, u.kundeA, (tx) =>
+      tx.query("select id from public.profiles"),
+    );
     expect(r.rows).toEqual([{ id: u.kundeA }]);
+  });
+
+  it("Kollegen derselben Firma sehen sich gegenseitig, fremde Firmen nicht", async () => {
+    const buero = await asUser(db, u.bueroA, (tx) =>
+      tx.query<{ id: string }>("select id from public.profiles"),
+    );
+    expect(buero.rows.map((r) => r.id).sort()).toEqual(
+      [u.inhaberA, u.bueroA, u.mitarbeiterA].sort(),
+    );
+    const other = await asUser(db, u.inhaberB, (tx) =>
+      tx.query<{ id: string }>("select id from public.profiles"),
+    );
+    expect(other.rows.map((r) => r.id)).toEqual([u.inhaberB]);
   });
 
   it("Kontotyp kann nicht selbst geändert werden", async () => {
     await expect(
-      asUser(db, u.kundeA, (tx) => tx.query("update public.profiles set account_type = 'betrieb' where id = $1", [u.kundeA])),
+      asUser(db, u.kundeA, (tx) =>
+        tx.query(
+          "update public.profiles set account_type = 'betrieb' where id = $1",
+          [u.kundeA],
+        ),
+      ),
     ).rejects.toThrow(/permission denied/);
   });
 
   it("Name kann selbst geändert werden, fremde Profile nicht", async () => {
-    await asUser(db, u.kundeA, (tx) => tx.query("update public.profiles set display_name = 'Anna' where id = $1", [u.kundeA]));
+    await asUser(db, u.kundeA, (tx) =>
+      tx.query(
+        "update public.profiles set display_name = 'Anna' where id = $1",
+        [u.kundeA],
+      ),
+    );
     const other = await asUser(db, u.kundeA, (tx) =>
-      tx.query("update public.profiles set display_name = 'Gehackt' where id = $1", [u.kundeB]),
+      tx.query(
+        "update public.profiles set display_name = 'Gehackt' where id = $1",
+        [u.kundeB],
+      ),
     );
     expect(other.affectedRows).toBe(0);
-    const b = await db.query<{ display_name: string }>("select display_name from public.profiles where id = $1", [u.kundeB]);
+    const b = await db.query<{ display_name: string }>(
+      "select display_name from public.profiles where id = $1",
+      [u.kundeB],
+    );
     expect(b.rows[0].display_name).toBe("Kunde B");
   });
 });
@@ -128,12 +196,18 @@ describe("Profile", () => {
 describe("Firmen", () => {
   it("Kundenkonten können keine Firma anlegen", async () => {
     await expect(
-      asUser(db, u.kundeA, (tx) => tx.query("select public.create_company('X GmbH','26169','Friesoythe',30,'{}')")),
+      asUser(db, u.kundeA, (tx) =>
+        tx.query(
+          "select public.create_company('X GmbH','26169','Friesoythe',30,'{}')",
+        ),
+      ),
     ).rejects.toThrow(/Nur Betriebskonten/);
   });
 
   it("ein Konto kann nur eine Firma anlegen", async () => {
-    await expect(createCompany(u.inhaberA, "Zweite Firma")).rejects.toThrow(/bereits zu einer Firma/);
+    await expect(createCompany(u.inhaberA, "Zweite Firma")).rejects.toThrow(
+      /bereits zu einer Firma/,
+    );
   });
 
   it("Inhaber wird automatisch Mitglied mit Rolle inhaber", async () => {
@@ -145,26 +219,38 @@ describe("Firmen", () => {
   });
 
   it("fremde Firmen sind unsichtbar", async () => {
-    const r = await asUser(db, u.inhaberB, (tx) => tx.query<{ id: string }>("select id from public.companies"));
+    const r = await asUser(db, u.inhaberB, (tx) =>
+      tx.query<{ id: string }>("select id from public.companies"),
+    );
     expect(r.rows.map((x) => x.id)).toEqual([companyB]);
-    const k = await asUser(db, u.kundeA, (tx) => tx.query("select id from public.companies"));
+    const k = await asUser(db, u.kundeA, (tx) =>
+      tx.query("select id from public.companies"),
+    );
     expect(k.rows).toHaveLength(0);
   });
 
   it("fremde Firmen können nicht geändert werden", async () => {
     const r = await asUser(db, u.inhaberB, (tx) =>
-      tx.query("update public.companies set name = 'Übernommen' where id = $1", [companyA]),
+      tx.query(
+        "update public.companies set name = 'Übernommen' where id = $1",
+        [companyA],
+      ),
     );
     expect(r.affectedRows).toBe(0);
   });
 
   it("Büro darf Firmendaten nicht ändern, Inhaber schon", async () => {
     const buero = await asUser(db, u.bueroA, (tx) =>
-      tx.query("update public.companies set name = 'Büro-Name' where id = $1", [companyA]),
+      tx.query("update public.companies set name = 'Büro-Name' where id = $1", [
+        companyA,
+      ]),
     );
     expect(buero.affectedRows).toBe(0);
     const owner = await asUser(db, u.inhaberA, (tx) =>
-      tx.query("update public.companies set name = 'Malerei A GmbH' where id = $1", [companyA]),
+      tx.query(
+        "update public.companies set name = 'Malerei A GmbH' where id = $1",
+        [companyA],
+      ),
     );
     expect(owner.affectedRows).toBe(1);
   });
@@ -172,7 +258,10 @@ describe("Firmen", () => {
   it("Verifizierungsstatus kann nicht selbst gesetzt werden", async () => {
     await expect(
       asUser(db, u.inhaberA, (tx) =>
-        tx.query("update public.companies set verification_status = 'verifiziert' where id = $1", [companyA]),
+        tx.query(
+          "update public.companies set verification_status = 'verifiziert' where id = $1",
+          [companyA],
+        ),
       ),
     ).rejects.toThrow(/permission denied/);
   });
@@ -180,12 +269,18 @@ describe("Firmen", () => {
   it("niemand kann sich selbst in eine fremde Firma eintragen", async () => {
     await expect(
       asUser(db, u.inhaberB, (tx) =>
-        tx.query("insert into public.company_memberships values ($1,$2,'inhaber')", [companyA, u.inhaberB]),
+        tx.query(
+          "insert into public.company_memberships values ($1,$2,'inhaber')",
+          [companyA, u.inhaberB],
+        ),
       ),
     ).rejects.toThrow(/permission denied/);
     await expect(
       asUser(db, u.mitarbeiterA, (tx) =>
-        tx.query("update public.company_memberships set role = 'inhaber' where user_id = $1", [u.mitarbeiterA]),
+        tx.query(
+          "update public.company_memberships set role = 'inhaber' where user_id = $1",
+          [u.mitarbeiterA],
+        ),
       ),
     ).rejects.toThrow(/permission denied/);
   });
@@ -194,14 +289,18 @@ describe("Firmen", () => {
 describe("Firmenaufträge", () => {
   it("Inhaber und Büro sehen die Aufträge der eigenen Firma", async () => {
     for (const id of [u.inhaberA, u.bueroA]) {
-      const r = await asUser(db, id, (tx) => tx.query<{ id: string }>("select id from public.company_jobs"));
+      const r = await asUser(db, id, (tx) =>
+        tx.query<{ id: string }>("select id from public.company_jobs"),
+      );
       expect(r.rows.map((x) => x.id)).toContain(jobA);
     }
   });
 
   it("andere Firmen, Kunden und (bis Sprint 3) ausführende Mitarbeiter sehen nichts", async () => {
     for (const id of [u.inhaberB, u.kundeA, u.mitarbeiterA]) {
-      const r = await asUser(db, id, (tx) => tx.query("select id from public.company_jobs where id = $1", [jobA]));
+      const r = await asUser(db, id, (tx) =>
+        tx.query("select id from public.company_jobs where id = $1", [jobA]),
+      );
       expect(r.rows).toHaveLength(0);
     }
   });
@@ -220,53 +319,93 @@ describe("Firmenaufträge", () => {
 
   it("fremde Aufträge können nicht geändert werden", async () => {
     const r = await asUser(db, u.inhaberB, (tx) =>
-      tx.query("update public.company_jobs set status = 'storniert' where id = $1", [jobA]),
+      tx.query(
+        "update public.company_jobs set status = 'storniert' where id = $1",
+        [jobA],
+      ),
     );
     expect(r.affectedRows).toBe(0);
   });
 
   it("Auftrag kann nicht in eine andere Firma verschoben oder gelöscht werden", async () => {
     await expect(
-      asUser(db, u.inhaberA, (tx) => tx.query("update public.company_jobs set company_id = $1 where id = $2", [companyB, jobA])),
+      asUser(db, u.inhaberA, (tx) =>
+        tx.query(
+          "update public.company_jobs set company_id = $1 where id = $2",
+          [companyB, jobA],
+        ),
+      ),
     ).rejects.toThrow(/permission denied/);
     await expect(
-      asUser(db, u.inhaberA, (tx) => tx.query("delete from public.company_jobs where id = $1", [jobA])),
+      asUser(db, u.inhaberA, (tx) =>
+        tx.query("delete from public.company_jobs where id = $1", [jobA]),
+      ),
     ).rejects.toThrow(/permission denied/);
   });
 
   it("Büro kann Status ändern; Statuswechsel wird mit Nutzer protokolliert", async () => {
-    await asUser(db, u.bueroA, (tx) => tx.query("update public.company_jobs set status = 'geplant' where id = $1", [jobA]));
-    const r = await db.query<{ actor_id: string; old_status: string; new_status: string }>(
+    await asUser(db, u.bueroA, (tx) =>
+      tx.query(
+        "update public.company_jobs set status = 'geplant' where id = $1",
+        [jobA],
+      ),
+    );
+    const r = await db.query<{
+      actor_id: string;
+      old_status: string;
+      new_status: string;
+    }>(
       "select actor_id, old_status, new_status from public.audit_events where entity_id = $1 and action = 'status_changed'",
       [jobA],
     );
-    expect(r.rows).toEqual([{ actor_id: u.bueroA, old_status: "neu", new_status: "geplant" }]);
+    expect(r.rows).toEqual([
+      { actor_id: u.bueroA, old_status: "neu", new_status: "geplant" },
+    ]);
   });
 
   it("Uhrzeit ohne Datum wird abgelehnt", async () => {
     await expect(
-      asUser(db, u.inhaberA, (tx) => tx.query("update public.company_jobs set scheduled_time = '08:00' where id = $1", [jobA])),
+      asUser(db, u.inhaberA, (tx) =>
+        tx.query(
+          "update public.company_jobs set scheduled_time = '08:00' where id = $1",
+          [jobA],
+        ),
+      ),
     ).rejects.toThrow(/check constraint/);
   });
 
   it("Notizen: eigene Firma ja, fremde Firma nein", async () => {
     await asUser(db, u.inhaberA, (tx) =>
-      tx.query("insert into public.job_notes (job_id, body) values ($1, 'Schlüssel beim Nachbarn')", [jobA]),
+      tx.query(
+        "insert into public.job_notes (job_id, body) values ($1, 'Schlüssel beim Nachbarn')",
+        [jobA],
+      ),
     );
     await expect(
-      asUser(db, u.inhaberB, (tx) => tx.query("insert into public.job_notes (job_id, body) values ($1, 'Spam')", [jobA])),
+      asUser(db, u.inhaberB, (tx) =>
+        tx.query(
+          "insert into public.job_notes (job_id, body) values ($1, 'Spam')",
+          [jobA],
+        ),
+      ),
     ).rejects.toThrow(/row-level security/);
-    const seen = await asUser(db, u.inhaberB, (tx) => tx.query("select id from public.job_notes"));
+    const seen = await asUser(db, u.inhaberB, (tx) =>
+      tx.query("select id from public.job_notes"),
+    );
     expect(seen.rows).toHaveLength(0);
   });
 });
 
 describe("Kundenanfragen", () => {
   it("nur der Auftraggeber sieht seine Anfrage – keine andere Person, keine Firma", async () => {
-    const own = await asUser(db, u.kundeA, (tx) => tx.query("select id from public.customer_requests"));
+    const own = await asUser(db, u.kundeA, (tx) =>
+      tx.query("select id from public.customer_requests"),
+    );
     expect(own.rows).toEqual([{ id: requestA }]);
     for (const id of [u.kundeB, u.inhaberA, u.bueroA]) {
-      const r = await asUser(db, id, (tx) => tx.query("select id from public.customer_requests"));
+      const r = await asUser(db, id, (tx) =>
+        tx.query("select id from public.customer_requests"),
+      );
       expect(r.rows).toHaveLength(0);
     }
   });
@@ -274,44 +413,88 @@ describe("Kundenanfragen", () => {
   it("doppelte Einsendung mit derselben Formular-ID wird verhindert", async () => {
     const clientId = uuid();
     await insertRequest(u.kundeB, { client_request_id: clientId });
-    await expect(insertRequest(u.kundeB, { client_request_id: clientId })).rejects.toThrow(/duplicate key/);
+    await expect(
+      insertRequest(u.kundeB, { client_request_id: clientId }),
+    ).rejects.toThrow(/duplicate key/);
   });
 
   it("Anfrage im Namen einer anderen Person ist nicht möglich", async () => {
-    await expect(insertRequest(u.kundeB, { customer_id: u.kundeA })).rejects.toThrow(/row-level security|Ungültiger/);
+    await expect(
+      insertRequest(u.kundeB, { customer_id: u.kundeA }),
+    ).rejects.toThrow(/row-level security|Ungültiger/);
   });
 
   it("Betriebskonten können keine Kundenanfragen stellen", async () => {
-    await expect(insertRequest(u.inhaberA)).rejects.toThrow(/row-level security/);
+    await expect(insertRequest(u.inhaberA)).rejects.toThrow(
+      /row-level security/,
+    );
   });
 
   it("fremde Anfragen können nicht geändert oder storniert werden", async () => {
     const r = await asUser(db, u.kundeB, (tx) =>
-      tx.query("update public.customer_requests set status = 'storniert' where id = $1", [requestA]),
+      tx.query(
+        "update public.customer_requests set status = 'storniert' where id = $1",
+        [requestA],
+      ),
     );
     expect(r.affectedRows).toBe(0);
   });
 
   it("Kunde darf nur stornieren, nicht selbst vergeben oder freischalten", async () => {
     await expect(
-      asUser(db, u.kundeA, (tx) => tx.query("update public.customer_requests set status = 'sichtbar' where id = $1", [requestA])),
+      asUser(db, u.kundeA, (tx) =>
+        tx.query(
+          "update public.customer_requests set status = 'sichtbar' where id = $1",
+          [requestA],
+        ),
+      ),
     ).rejects.toThrow(/Statuswechsel nicht erlaubt/);
   });
 
+  it("Systemprozesse (Moderation) dürfen den Status setzen", async () => {
+    const r = await insertRequest(u.kundeB);
+    await db.query(
+      "update public.customer_requests set status = 'pruefung' where id = $1",
+      [r.rows[0].id],
+    );
+    const check = await db.query<{ status: string }>(
+      "select status from public.customer_requests where id = $1",
+      [r.rows[0].id],
+    );
+    expect(check.rows[0].status).toBe("pruefung");
+  });
+
   it("ungültige Daten werden von der Datenbank abgelehnt", async () => {
-    await expect(insertRequest(u.kundeB, { postal_code: "123" })).rejects.toThrow(/check constraint/);
-    await expect(insertRequest(u.kundeB, { title: "x" })).rejects.toThrow(/check constraint/);
-    await expect(insertRequest(u.kundeB, { category_id: "<script>" })).rejects.toThrow(/check constraint/);
+    await expect(
+      insertRequest(u.kundeB, { postal_code: "123" }),
+    ).rejects.toThrow(/check constraint/);
+    await expect(insertRequest(u.kundeB, { title: "x" })).rejects.toThrow(
+      /check constraint/,
+    );
+    await expect(
+      insertRequest(u.kundeB, { category_id: "<script>" }),
+    ).rejects.toThrow(/check constraint/);
   });
 
   it("anonyme Besucher haben keinerlei Zugriff", async () => {
-    for (const t of ["profiles", "companies", "company_jobs", "customer_requests", "request_attachments", "audit_events"]) {
-      await expect(asAnon(db, (tx) => tx.query(`select * from public.${t}`))).rejects.toThrow(/permission denied/);
+    for (const t of [
+      "profiles",
+      "companies",
+      "company_jobs",
+      "customer_requests",
+      "request_attachments",
+      "audit_events",
+    ]) {
+      await expect(
+        asAnon(db, (tx) => tx.query(`select * from public.${t}`)),
+      ).rejects.toThrow(/permission denied/);
     }
   });
 
   it("Missbrauchsschutz: höchstens 10 Anfragen in 24 Stunden", async () => {
-    const spammer = await createUser(db, "spam@test.de", { account_type: "kunde" });
+    const spammer = await createUser(db, "spam@test.de", {
+      account_type: "kunde",
+    });
     for (let i = 0; i < 10; i++) await insertRequest(spammer);
     await expect(insertRequest(spammer)).rejects.toThrow(/Zu viele Anfragen/);
   });
@@ -323,32 +506,47 @@ describe("Fotos (Metadaten + privater Speicher)", () => {
   it("Eigentümer kann Fotos zu eigener Anfrage speichern", async () => {
     const p = path(u.kundeA, requestA);
     await asUser(db, u.kundeA, async (tx) => {
-      await tx.query("insert into storage.objects (bucket_id, name) values ('request-photos', $1)", [p]);
+      await tx.query(
+        "insert into storage.objects (bucket_id, name) values ('request-photos', $1)",
+        [p],
+      );
       await tx.query(
         "insert into public.request_attachments (request_id, client_file_id, storage_path, mime_type, size_bytes) values ($1,$2,$3,'image/jpeg',1000)",
         [requestA, uuid(), p],
       );
     });
-    const r = await asUser(db, u.kundeA, (tx) => tx.query("select name from storage.objects"));
+    const r = await asUser(db, u.kundeA, (tx) =>
+      tx.query("select name from storage.objects"),
+    );
     expect(r.rows).toHaveLength(1);
   });
 
   it("fremde Personen können weder hochladen noch lesen", async () => {
     await expect(
       asUser(db, u.kundeB, (tx) =>
-        tx.query("insert into storage.objects (bucket_id, name) values ('request-photos', $1)", [path(u.kundeA, requestA)]),
+        tx.query(
+          "insert into storage.objects (bucket_id, name) values ('request-photos', $1)",
+          [path(u.kundeA, requestA)],
+        ),
       ),
     ).rejects.toThrow(/row-level security/);
     // Eigener Ordner, aber fremde Anfrage
     await expect(
       asUser(db, u.kundeB, (tx) =>
-        tx.query("insert into storage.objects (bucket_id, name) values ('request-photos', $1)", [path(u.kundeB, requestA)]),
+        tx.query(
+          "insert into storage.objects (bucket_id, name) values ('request-photos', $1)",
+          [path(u.kundeB, requestA)],
+        ),
       ),
     ).rejects.toThrow(/row-level security/);
     for (const id of [u.kundeB, u.inhaberA]) {
-      const objs = await asUser(db, id, (tx) => tx.query("select name from storage.objects"));
+      const objs = await asUser(db, id, (tx) =>
+        tx.query("select name from storage.objects"),
+      );
       expect(objs.rows).toHaveLength(0);
-      const meta = await asUser(db, id, (tx) => tx.query("select id from public.request_attachments"));
+      const meta = await asUser(db, id, (tx) =>
+        tx.query("select id from public.request_attachments"),
+      );
       expect(meta.rows).toHaveLength(0);
     }
   });
@@ -409,12 +607,20 @@ describe("Fotos (Metadaten + privater Speicher)", () => {
   });
 
   it("Bucket ist privat mit Größen- und Typlimit", async () => {
-    const r = await db.query<{ public: boolean; file_size_limit: number; allowed_mime_types: string[] }>(
+    const r = await db.query<{
+      public: boolean;
+      file_size_limit: number;
+      allowed_mime_types: string[];
+    }>(
       "select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'request-photos'",
     );
     expect(r.rows[0].public).toBe(false);
     expect(Number(r.rows[0].file_size_limit)).toBe(5242880);
-    expect(r.rows[0].allowed_mime_types).toEqual(["image/jpeg", "image/png", "image/webp"]);
+    expect(r.rows[0].allowed_mime_types).toEqual([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ]);
   });
 });
 
@@ -422,19 +628,34 @@ describe("Protokoll", () => {
   it("kann nicht direkt beschrieben werden", async () => {
     await expect(
       asUser(db, u.inhaberA, (tx) =>
-        tx.query("insert into public.audit_events (entity_type, entity_id, action) values ('x', $1, 'fake')", [uuid()]),
+        tx.query(
+          "insert into public.audit_events (entity_type, entity_id, action) values ('x', $1, 'fake')",
+          [uuid()],
+        ),
       ),
     ).rejects.toThrow(/permission denied/);
   });
 
   it("ist nur für Berechtigte lesbar", async () => {
-    const a = await asUser(db, u.inhaberA, (tx) => tx.query("select id from public.audit_events where company_id = $1", [companyA]));
+    const a = await asUser(db, u.inhaberA, (tx) =>
+      tx.query("select id from public.audit_events where company_id = $1", [
+        companyA,
+      ]),
+    );
     expect(a.rows.length).toBeGreaterThan(0);
-    const b = await asUser(db, u.inhaberB, (tx) => tx.query("select id from public.audit_events where company_id = $1", [companyA]));
+    const b = await asUser(db, u.inhaberB, (tx) =>
+      tx.query("select id from public.audit_events where company_id = $1", [
+        companyA,
+      ]),
+    );
     expect(b.rows).toHaveLength(0);
     const k = await asUser(db, u.kundeA, (tx) =>
-      tx.query<{ entity_type: string }>("select entity_type from public.audit_events"),
+      tx.query<{ entity_type: string }>(
+        "select entity_type from public.audit_events",
+      ),
     );
-    expect(k.rows.every((x) => x.entity_type === "customer_request")).toBe(true);
+    expect(k.rows.every((x) => x.entity_type === "customer_request")).toBe(
+      true,
+    );
   });
 });

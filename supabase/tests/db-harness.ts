@@ -34,7 +34,11 @@ export async function createUser(
 }
 
 /** Führt fn als angemeldeter Nutzer aus (Rolle authenticated + JWT-Claims), danach Rollback-frei Commit. */
-export async function asUser<T>(db: Db, userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+export async function asUser<T>(
+  db: Db,
+  userId: string,
+  fn: (tx: Tx) => Promise<T>,
+): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.query("select set_config('request.jwt.claims', $1, true)", [
       JSON.stringify({ sub: userId, role: "authenticated" }),
@@ -45,9 +49,14 @@ export async function asUser<T>(db: Db, userId: string, fn: (tx: Tx) => Promise<
 }
 
 /** Führt fn als nicht angemeldeter Besucher (anon) aus. */
-export async function asAnon<T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> {
+export async function asAnon<T>(
+  db: Db,
+  fn: (tx: Tx) => Promise<T>,
+): Promise<T> {
   return db.transaction(async (tx) => {
-    await tx.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role: "anon" })]);
+    await tx.query("select set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ role: "anon" }),
+    ]);
     await tx.exec("set local role anon");
     return fn(tx);
   });

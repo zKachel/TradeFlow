@@ -1,27 +1,9 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
-import { RequestForm } from "./request-form";
+import { LiveRequestForm } from "./live-form";
 
 export const metadata: Metadata = { title: "Neue Anfrage" };
 
 export default function NewRequestPage() {
-  return (
-    <Suspense fallback={<FormSkeleton />}>
-      <RequestForm />
-    </Suspense>
-  );
-}
-
-function FormSkeleton() {
-  return (
-    <div
-      aria-busy="true"
-      aria-label="Formular wird geladen"
-      className="animate-pulse space-y-4"
-    >
-      <div className="h-8 w-2/3 rounded-lg bg-line" />
-      <div className="h-2 rounded-full bg-line" />
-      <div className="h-64 rounded-2xl bg-line/60" />
-    </div>
-  );
+  // Das Layout umschließt die Seite bereits mit <Suspense> (für useSearchParams).
+  return <LiveRequestForm />;
 }

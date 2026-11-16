@@ -39,6 +39,8 @@ export interface Category {
   groupId: string;
   hint: string;
   fields: FieldDef[];
+  /** In der Pilotphase priorisiert (ausführliche Fragen, oben angezeigt). */
+  featured?: boolean;
 }
 
 export const CATEGORY_GROUPS: CategoryGroup[] = [
@@ -82,7 +84,7 @@ const innenAussen: FieldDef = {
   ],
 };
 
-export const CATEGORIES: Category[] = [
+const BASE_CATEGORIES: Category[] = [
   // Bau & Rohbau
   {
     id: "maurer",
@@ -617,6 +619,373 @@ export const CATEGORIES: Category[] = [
     fields: [],
   },
 ];
+
+/* ------------------------------------------------------------------
+ * Pilot-Kategorien mit ausführlichen Fragen (Freigabe Sprint 2):
+ * Maler, Gartenpflege, Entrümpelung, Bodenverlegung, Reinigung,
+ * Möbel-/Küchenmontage, Pflaster-/Terrassenarbeiten, Sanitär.
+ * ------------------------------------------------------------------ */
+const select = (
+  id: string,
+  label: string,
+  options: [string, string][],
+  extra: Partial<FieldDef> = {},
+): FieldDef => ({
+  id,
+  label,
+  type: "select",
+  options: options.map(([value, l]) => ({ value, label: l })),
+  ...extra,
+});
+
+const num = (
+  id: string,
+  label: string,
+  min: number,
+  max: number,
+  extra: Partial<FieldDef> = {},
+): FieldDef => ({
+  id,
+  label,
+  type: "number",
+  min,
+  max,
+  ...extra,
+});
+
+const materialBy = select("material", "Wer stellt das Material?", [
+  ["kunde", "Ich stelle das Material"],
+  ["betrieb", "Der Betrieb soll es besorgen"],
+  ["offen", "Noch offen"],
+]);
+
+const PILOT_FIELDS: Record<string, FieldDef[]> = {
+  maler: [
+    area("Zu streichende Fläche", true),
+    innenAussen,
+    num("raeume", "Anzahl Räume", 1, 50, {
+      followUp: "Wie viele Räume sind es ungefähr?",
+    }),
+    select(
+      "zustand",
+      "Zustand",
+      [
+        ["gut", "Gut – nur neu streichen"],
+        ["ausbessern", "Risse / Löcher ausbessern"],
+        ["schlecht", "Stark beschädigt"],
+      ],
+      {
+        followUp:
+          "Wie ist der Zustand der Wände? Müssen Risse oder Löcher ausgebessert werden?",
+      },
+    ),
+    select(
+      "untergrund",
+      "Untergrund",
+      [
+        ["tapete", "Tapete / Raufaser"],
+        ["putz", "Putz"],
+        ["beton", "Beton"],
+        ["holz", "Holz"],
+        ["unbekannt", "Weiß ich nicht"],
+      ],
+      { followUp: "Wissen Sie, ob es Tapete, Putz oder Beton ist?" },
+    ),
+    select("farbe", "Farbwunsch", [
+      ["weiss", "Weiß"],
+      ["farbig", "Farbig"],
+      ["offen", "Noch offen"],
+    ]),
+    yesNo(
+      "moebliert",
+      "Sind die Räume möbliert?",
+      "Sind die Räume leer oder müssen Möbel abgedeckt/verschoben werden?",
+    ),
+  ],
+  rasenpflege: [
+    area("Rasenfläche", true),
+    select(
+      "leistung",
+      "Was soll gemacht werden?",
+      [
+        ["maehen", "Mähen"],
+        ["vertikutieren", "Vertikutieren"],
+        ["duengen", "Düngen / Nachsäen"],
+        ["neuanlage", "Neuanlage / Rollrasen"],
+      ],
+      { required: true },
+    ),
+    select(
+      "haeufigkeit",
+      "Wie oft?",
+      [
+        ["einmalig", "Einmalig"],
+        ["regelmaessig", "Regelmäßig (Saison)"],
+      ],
+      { required: true },
+    ),
+    yesNo(
+      "entsorgung",
+      "Rasenschnitt entsorgen?",
+      "Soll der Rasenschnitt mitgenommen werden?",
+    ),
+  ],
+  heckenschnitt: [
+    num("laenge", "Heckenlänge", 1, 2000, { unit: "m", required: true }),
+    num("hoehe", "Heckenhöhe", 0.5, 15, {
+      unit: "m",
+      followUp: "Wie hoch ist die Hecke ungefähr?",
+    }),
+    select("heckenart", "Heckenart", [
+      ["thuja", "Thuja / Lebensbaum"],
+      ["liguster", "Liguster"],
+      ["hainbuche", "Hainbuche / Buche"],
+      ["kirschlorbeer", "Kirschlorbeer"],
+      ["andere", "Andere / weiß nicht"],
+    ]),
+    yesNo("beidseitig", "Beidseitig schneiden?"),
+    yesNo(
+      "entsorgung",
+      "Schnittgut entsorgen?",
+      "Soll das Schnittgut mitgenommen werden?",
+    ),
+  ],
+  entruempelung: [
+    num("raeume", "Anzahl Räume", 1, 50, { required: true }),
+    num("volumen", "Ungefähres Volumen", 1, 1000, {
+      unit: "m³",
+      followUp:
+        "Können Sie das Volumen grob schätzen? (Ein Transporter fasst etwa 10–15 m³)",
+    }),
+    select(
+      "inhalt",
+      "Was muss raus?",
+      [
+        ["hausrat", "Hausrat und Möbel"],
+        ["elektro", "Viele Elektrogeräte"],
+        ["gemischt", "Gemischt"],
+        ["sonderabfall", "Auch Farben/Chemikalien"],
+      ],
+      {
+        required: true,
+        help: "Sonderabfall (Farben, Chemikalien) muss gesondert entsorgt werden.",
+      },
+    ),
+    select(
+      "etage",
+      "Etage",
+      [
+        ["keller", "Keller"],
+        ["eg", "Erdgeschoss"],
+        ["1-2", "1.–2. Etage"],
+        ["3+", "3. Etage oder höher"],
+      ],
+      { required: true },
+    ),
+    yesNo("aufzug", "Aufzug vorhanden?"),
+    num("laufweg", "Laufweg vom Parkplatz zum Eingang", 0, 500, {
+      unit: "m",
+      followUp: "Wie weit ist es ungefähr vom Parkplatz bis zur Haustür?",
+    }),
+    yesNo("entsorgung", "Entsorgung gewünscht?"),
+  ],
+  bodenbelaege: [
+    area("Bodenfläche", true),
+    num("raeume", "Anzahl Räume", 1, 50),
+    select(
+      "bodenart",
+      "Gewünschter Boden",
+      [
+        ["parkett", "Parkett"],
+        ["laminat", "Laminat"],
+        ["vinyl", "Vinyl / Designboden"],
+        ["teppich", "Teppich"],
+        ["offen", "Noch offen"],
+      ],
+      { required: true },
+    ),
+    select(
+      "untergrund",
+      "Aktueller Untergrund",
+      [
+        ["estrich", "Estrich"],
+        ["fliesen", "Fliesen"],
+        ["holz", "Holzdielen"],
+        ["unbekannt", "Weiß ich nicht"],
+      ],
+      {
+        followUp:
+          "Wissen Sie, worauf der neue Boden verlegt wird (Estrich, Fliesen, Holz)?",
+      },
+    ),
+    yesNo(
+      "altbelag",
+      "Alten Belag entfernen?",
+      "Soll der alte Bodenbelag entfernt werden?",
+    ),
+    yesNo("sockelleisten", "Neue Sockelleisten?"),
+    materialBy,
+  ],
+  reinigung: [
+    select(
+      "art",
+      "Art der Reinigung",
+      [
+        ["grundreinigung", "Grundreinigung"],
+        ["umzug", "Endreinigung nach Umzug"],
+        ["fenster", "Fensterreinigung"],
+        ["bau", "Baureinigung"],
+        ["treppenhaus", "Treppenhaus"],
+        ["unterhalt", "Regelmäßige Unterhaltsreinigung"],
+      ],
+      { required: true },
+    ),
+    area("Zu reinigende Fläche", false),
+    num("fenster", "Anzahl Fenster", 0, 500, {
+      followUp: "Wie viele Fenster sind es ungefähr?",
+    }),
+    select("haeufigkeit", "Wie oft?", [
+      ["einmalig", "Einmalig"],
+      ["woechentlich", "Wöchentlich"],
+      ["14taegig", "Alle 2 Wochen"],
+      ["monatlich", "Monatlich"],
+    ]),
+  ],
+  moebelmontage: [
+    select(
+      "art",
+      "Was soll montiert werden?",
+      [
+        ["schrank", "Schrank / Kleiderschrank"],
+        ["bett", "Bett"],
+        ["regal", "Regal / Kommode"],
+        ["buero", "Büromöbel"],
+        ["sonstiges", "Sonstiges"],
+      ],
+      { required: true },
+    ),
+    num("anzahl", "Anzahl Möbelstücke", 1, 100, { required: true }),
+    yesNo("anleitung", "Aufbauanleitung vorhanden?"),
+    yesNo(
+      "wandbefestigung",
+      "Wandbefestigung nötig?",
+      "Muss etwas an der Wand befestigt werden (z. B. Kippschutz)?",
+    ),
+  ],
+  kuechenmontage: [
+    num("laenge", "Küchenzeile Länge", 1, 30, { unit: "m", required: true }),
+    yesNo(
+      "geliefert",
+      "Ist die Küche schon geliefert?",
+      "Ist die Küche schon geliefert oder wann kommt sie?",
+    ),
+    yesNo(
+      "geraete",
+      "Elektrogeräte anschließen?",
+      "Sollen Herd, Spülmaschine usw. angeschlossen werden?",
+    ),
+    yesNo("wasser", "Spüle / Wasser anschließen?"),
+    yesNo("arbeitsplatte", "Arbeitsplatte zuschneiden?"),
+  ],
+  pflaster: [
+    area("Pflasterfläche", true),
+    select(
+      "bereich",
+      "Wo?",
+      [
+        ["einfahrt", "Einfahrt"],
+        ["weg", "Gehweg"],
+        ["hof", "Hof / Stellplatz"],
+        ["terrasse", "Terrasse"],
+      ],
+      { required: true },
+    ),
+    select("material", "Material", [
+      ["beton", "Betonstein"],
+      ["naturstein", "Naturstein"],
+      ["klinker", "Klinker"],
+      ["offen", "Noch offen"],
+    ]),
+    yesNo(
+      "altbelag",
+      "Alten Belag entfernen?",
+      "Muss ein alter Belag entfernt werden?",
+    ),
+    yesNo(
+      "unterbau",
+      "Ist ein tragfähiger Unterbau vorhanden?",
+      "Gibt es schon einen Unterbau (Schotter) oder muss ausgekoffert werden?",
+    ),
+  ],
+  terrassenbau: [
+    area("Terrassenfläche", true),
+    select(
+      "material",
+      "Material",
+      [
+        ["holz", "Holz"],
+        ["wpc", "WPC"],
+        ["stein", "Stein / Platten"],
+        ["offen", "Noch offen"],
+      ],
+      { required: true },
+    ),
+    select(
+      "untergrund",
+      "Aktueller Untergrund",
+      [
+        ["erde", "Rasen / Erde"],
+        ["platten", "Alte Terrasse"],
+        ["beton", "Betonplatte"],
+      ],
+      {
+        followUp:
+          "Was ist aktuell an der Stelle – Rasen, alte Terrasse oder Beton?",
+      },
+    ),
+    yesNo("altbelag", "Alte Terrasse entfernen?"),
+  ],
+  sanitaer: [
+    select(
+      "art",
+      "Art der Arbeit",
+      [
+        ["badsanierung", "Badsanierung"],
+        ["armatur", "Armatur / WC tauschen"],
+        ["leck", "Leck / Rohrproblem"],
+        ["verstopfung", "Verstopfung"],
+        ["neuinstallation", "Neuinstallation"],
+      ],
+      {
+        required: true,
+        help: "Bei akutem Wasserschaden: Hauptwasserhahn zudrehen und einen Notdienst rufen.",
+      },
+    ),
+    select(
+      "objekt",
+      "Gebäude",
+      [
+        ["haus", "Einfamilienhaus"],
+        ["wohnung", "Wohnung"],
+        ["gewerbe", "Gewerbe"],
+      ],
+      { required: true },
+    ),
+    yesNo(
+      "anschluesse",
+      "Sind Wasser- und Abwasseranschlüsse vorhanden?",
+      "Sind die nötigen Anschlüsse bereits vorhanden?",
+    ),
+    yesNo("absperrbar", "Lässt sich das Wasser absperren?"),
+    materialBy,
+  ],
+};
+
+export const CATEGORIES: Category[] = BASE_CATEGORIES.map((c) =>
+  PILOT_FIELDS[c.id] ? { ...c, fields: PILOT_FIELDS[c.id], featured: true } : c,
+);
+
+export const FEATURED_CATEGORIES = CATEGORIES.filter((c) => c.featured);
 
 const categoryById = new Map(CATEGORIES.map((c) => [c.id, c]));
 

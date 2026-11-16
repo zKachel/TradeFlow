@@ -3,9 +3,10 @@
 Auftragsmarktplatz für Arbeiten rund um Haus, Wohnung und Garten **plus** Betriebssoftware für
 Handwerks- und Dienstleistungsbetriebe.
 
-> **Stand: Sprint 0 + 1 – klickbare Demo.** Keine Anmeldung, keine Datenbank, keine echten Daten.
-> Alle Betriebe, Kunden und Aufträge sind erfunden und als Demo gekennzeichnet.
+> **Stand: Sprint 2 – geschlossene Testphase.** Login, Datenbank (Supabase) und private Fotos sind
+> eingebaut. Nicht öffentlich, nur Testdaten. Die Demo mit erfundenen Daten liegt unter `/demo`.
 > Produkt- und Architekturgrundlage: [`docs/MASTERPLAN.md`](docs/MASTERPLAN.md).
+> **Supabase einrichten:** [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md).
 
 ## Lokal starten
 
@@ -19,6 +20,9 @@ npm run dev
 ```
 
 Dann im Browser öffnen: <http://localhost:3000>
+
+Ohne `.env.local` läuft nur die Demo (`/demo`). Für Login und Speichern zuerst
+[`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) durchgehen.
 
 Auf dem Handy testen (gleiches WLAN): `npm run dev -- -H 0.0.0.0` und dann
 `http://<IP-deines-PCs>:3000` auf dem Handy öffnen.
@@ -36,21 +40,21 @@ Auf dem Handy testen (gleiches WLAN): `npm run dev -- -H 0.0.0.0` und dann
 | `npm run format`    | Code formatieren (Prettier)               |
 | `npm run check`     | Lint + Typecheck + Tests + Build in einem |
 
-## Was die Demo zeigt
+## Bereiche
 
-| Pfad                  | Inhalt                                                                  |
-| --------------------- | ----------------------------------------------------------------------- |
-| `/`                   | Startseite mit zwei Einstiegen: Auftraggeber / Betrieb                  |
-| `/kunde`              | Kunden-Dashboard „Meine Anfragen“                                       |
-| `/kunde/anfrage/neu`  | Anfrageformular in 4 Schritten, 30+ Kategorien, dynamische Zusatzfragen |
-| `/betrieb`            | Firmen-Übersicht: Kennzahlen, Termine heute, nicht zugewiesene Aufträge |
-| `/betrieb/auftraege`  | Eigene (interne) Aufträge mit Filter, Suche und „Auftrag anlegen“       |
-| `/betrieb/marktplatz` | Marktplatz-Anfragen – klar getrennt, ohne Kontaktdaten                  |
-| `/betrieb/team`       | Team und Rollen-/Rechteübersicht                                        |
-| `/offline`            | Offline-Seite der PWA                                                   |
-
-In der Demo selbst erstellte Anfragen und Aufträge werden nur im eigenen Browser
-(`localStorage`) gespeichert. Fotos werden nur als Vorschau gezeigt, nicht hochgeladen.
+| Pfad                                                | Inhalt                                                         |
+| --------------------------------------------------- | -------------------------------------------------------------- |
+| `/`                                                 | Startseite                                                     |
+| `/registrieren`, `/anmelden`, `/passwort-vergessen` | Konto (Auftraggeber oder Betrieb)                              |
+| `/kunde`                                            | Meine Anfragen (echt, nur eigene)                              |
+| `/kunde/anfrage/neu`                                | Anfrage stellen mit privaten Fotos                             |
+| `/betrieb-einrichten`                               | Firma anlegen (nach Registrierung als Betrieb)                 |
+| `/betrieb`                                          | Firmen-Übersicht                                               |
+| `/betrieb/auftraege`                                | Eigene Aufträge: anlegen, bearbeiten, Status, Notizen, Verlauf |
+| `/betrieb/team`                                     | Team und Rechte                                                |
+| `/betrieb/marktplatz`                               | Hinweis: startet in der Pilotphase                             |
+| `/betrieb/profil`                                   | Firmenprofil (nur Inhaber)                                     |
+| `/demo`                                             | Klickbare Demo mit erfundenen Daten (ohne Login)               |
 
 ## Installation als App (PWA)
 
@@ -68,26 +72,31 @@ es nur über `localhost`.
 
 ```
 src/
-  app/                 Seiten (Next.js App Router)
-    kunde/             Bereich Auftraggeber
-    betrieb/           Bereich Betrieb
-    manifest.ts        PWA-Manifest
-  components/          Wiederverwendbare UI-Bausteine
+  proxy.ts               Sitzung auffrischen, Anmeldung erzwingen
+  app/
+    (auth)/              Registrieren, Anmelden, Passwort
+    auth/confirm/        Ziel der E-Mail-Links
+    kunde/               Auftraggeber (echt) + Server Actions
+    betrieb/             Betrieb (echt) + Server Actions
+    betrieb-einrichten/  Firma anlegen
+    demo/                Demo mit erfundenen Daten
+  components/            UI-Bausteine (u. a. request-form.tsx für Demo und echt)
   lib/
-    categories.ts      Kategorien + Zusatzfelder (datengetrieben)
-    request-schema.ts  Validierung Kundenanfrage (Zod) + Rückfragen + Foto-Regeln
-    job-schema.ts      Validierung interner Auftrag
-    types.ts           Domänentypen und Status
-    demo-data.ts       Erfundene Demo-Daten
-    demo-store.ts      Demo-Speicher im Browser (wird in Sprint 2 ersetzt)
-public/sw.js           Service Worker (Offline-Fallback)
-scripts/               Hilfsskripte (Icons erzeugen)
-docs/MASTERPLAN.md     Produktgrundlage
-TASKS.md               Aufgaben mit Status
-DECISIONS.md           Architekturentscheidungen
+    supabase/            Supabase-Clients (nur Publishable Key)
+    auth.ts              Nutzer/Firma ermitteln, Kontoart prüfen
+    categories.ts        32 Kategorien + Zusatzfelder (datengetrieben)
+    request-schema.ts    Validierung Kundenanfrage
+    request-submission.ts  Absenden: Doppelschutz, Wiederholen, Entwurf
+    image-*.ts           Foto-Prüfung (Browser + Server)
+supabase/
+  migrations/            Datenbankschema, RLS, Storage (in dieser Reihenfolge einspielen)
+  tests/                 Datenbank-/Rechtetests mit PGlite
+docs/                    Masterplan, Supabase-Anleitung
+TASKS.md / DECISIONS.md  Aufgaben / Architekturentscheidungen
 ```
 
 ## Umgebungsvariablen
 
-Für die Demo nicht nötig. Vorlage: [`.env.example`](.env.example). Echte Werte gehören in
-`.env.local` – diese Datei ist per `.gitignore` ausgeschlossen und darf nie committet werden.
+Vorlage: [`.env.example`](.env.example). Echte Werte gehören in `.env.local` – diese Datei ist per
+`.gitignore` ausgeschlossen und darf nie committet werden. Es wird **nur** der öffentliche
+Publishable Key verwendet; der Secret/Service-Role-Key wird nicht gebraucht.

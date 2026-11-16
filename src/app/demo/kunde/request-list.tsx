@@ -56,7 +56,10 @@ export function CustomerRequestList() {
         title="Meine Anfragen"
         description="Hier sehen Sie nur Ihre eigenen Anfragen und deren Stand."
         action={
-          <LinkButton href="/kunde/anfrage/neu" className="w-full sm:w-auto">
+          <LinkButton
+            href="/demo/kunde/anfrage/neu"
+            className="w-full sm:w-auto"
+          >
             <Plus className="size-4" aria-hidden="true" /> Neue Anfrage stellen
           </LinkButton>
         }
@@ -68,7 +71,9 @@ export function CustomerRequestList() {
           title="Noch keine Anfragen"
           text="Beschreiben Sie Ihre erste Arbeit – das dauert nur ein paar Minuten."
           action={
-            <LinkButton href="/kunde/anfrage/neu">Anfrage stellen</LinkButton>
+            <LinkButton href="/demo/kunde/anfrage/neu">
+              Anfrage stellen
+            </LinkButton>
           }
         />
       ) : (
